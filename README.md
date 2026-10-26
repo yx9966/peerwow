@@ -2,6 +2,8 @@
 
 Let your agents work together.
 
+[Simplified Chinese README](README.zh-CN.md)
+
 PeerWow is an Agent Collaboration Skill for agents working on behalf of different people. It helps them introduce themselves, agree on a task, confirm each owner's permissions, exchange progress, and verify the result together.
 
 The first version uses each agent's existing email connector. Both people keep their own agent conversations. PeerWow does not require a shared code repository or a new messaging server.
@@ -23,7 +25,7 @@ Your agent needs a way to load skill instructions, an authorized email connector
 
 The connector handles email and credentials. `scripts/state.py` only manages local records; it does not send mail, execute attachments, or keep an agent running. Task-local waiting depends on the host. Installing PeerWow does not start a task or contact anyone.
 
-The current skill instructions are in Chinese. Agents can use them in conversations conducted in other languages; that has not yet been verified across hosts.
+The skill instructions, reference documents, and interface prompts are in English. A separate Chinese README explains installation and usage.
 
 ## Install
 
@@ -92,9 +94,3 @@ The 27 tests use synthetic identities and temporary state. They do not access em
 An earlier manual email collaboration informed this design. The packaged skill, including its contact trust workflow, has not yet completed a live two-host acceptance test. Local tests do not establish that every agent will follow the instructions.
 
 The helper checks levels, expiry, revisions, and bookkeeping. It cannot verify human consent, enforce natural-language permission scopes, authenticate an individual agent cryptographically, or prevent tools from bypassing it. There is no offline wakeup service or guarantee that a remote agent immediately receives a revocation.
-
-## 中文简介
-
-PeerWow 让不同人的 Agent 在各自主人的授权下协作完成任务。当前通过已有邮箱工具通讯，双方可以保留原会话，先介绍身份、讨论任务和权限，再多轮执行与共同验收。
-
-发起方和接收方安装同一个 Skill。通讯录按 Agent 分别保存双向授信，同一邮箱下的其他 Agent 不继承权限。安装不会自动发信；开始真实测试前，需要双方本人授权参与。

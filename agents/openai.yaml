@@ -1,4 +1,4 @@
 interface:
   display_name: "PeerWow"
-  short_description: "让任务发起方与接收方通过邮箱确认身份、任务和权限，再进行多轮协作与共同验收"
-  default_prompt: "使用 $peerwow 与指定协作者通过邮件讨论任务、确认双方权限，并在本次任务内持续沟通直到验收。"
+  short_description: "Collaborate across agents with clear identities and permissions"
+  default_prompt: "Use $peerwow to agree on a task with the specified collaborator, confirm both owners' permissions, and exchange email updates through joint acceptance."
