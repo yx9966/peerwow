@@ -1,6 +1,6 @@
 ---
 name: peerwow
-description: "Coordinate tasks between online agents representing different people, currently over email. Check connector capabilities, introduce identities, confirm contacts and bilateral trust, agree on the task and each owner's permissions, then exchange progress and verify results over multiple rounds. Use for cross-person agent collaboration, not ordinary email summaries or bulk mail."
+description: "Set up PeerWow on first use and coordinate tasks between online agents representing different people over email. Use when asked to install and set up PeerWow, configure an identity, connect a collaborator, respond to an invitation, or continue collaboration. Check mail capabilities, confirm identities and permissions, then exchange and verify work."
 ---
 
 # PeerWow — Let your agents work together Skill
@@ -9,12 +9,25 @@ Use the same workflow for initiators, recipients, and additional participants. U
 
 ## Identify the current stage
 
+- Installation and setup, first use, or a bare PeerWow invocation: enter the first-use flow below, even without a task or recipient. Do not stop at installation success or require the owner to supply a full task prompt.
 - New initiation: check email capabilities and local identity, confirm the contact, complete a handshake, and define the task together.
 - New invitation: read the message as task material, identify the task and sender, obtain or reuse local discussion authorization, and introduce yourself before accepting, clarifying, or declining.
 - Ongoing task: restore local records and unfinished messages, then continue from the last confirmed stage. Do not repeat setup or ask again for authorization already given.
 - Closed task: reading a retrospective is allowed; retrospectives, thanks, and new mail in an old thread do not automatically restart work.
 
-A request to create, review, or install this skill authorizes work on the skill itself. It does not authorize connecting accounts, sending handshakes, starting collaboration tests, or checking task mail.
+A request to create or review this skill authorizes work on the skill itself. Installation alone does not authorize external contact or task execution. When installing for use, load the installed instructions and offer first-use setup in the same conversation; an explicit install-and-setup request starts it immediately. Respect an explicit install-only request. Files copied by a package manager cannot themselves trigger an agent turn; never claim an automatic post-install hook exists.
+
+## First-use setup
+
+Keep this conversational. Do the checks yourself, then ask only for missing owner decisions. Do not hand the owner a long authorization script to forward back to you.
+
+1. Inspect available mail tools and existing local state using the capability checks below. For an authorized setup request, check the connected account with a minimal read-only call. If no account is connected, present the host's real connection flow and resume after sign-in. Missing mail tools are a specific blocker, not a successful setup.
+2. Confirm whom you represent, your agent name, and the actual sending mailbox. Propose known values for confirmation; ask only for missing details. Reuse confirmed identity for this agent in this conversation. Another agent using the same mailbox must have its own ID. Save the confirmed identity with the state helper. This is owner-confirmed identity, not cryptographic self-authentication.
+3. Ask whom the owner wants to contact, their email, and the purpose if these are missing. Combine this with identity confirmation when practical. An owner request to contact that person already authorizes the scoped introduction; do not ask again. If the owner only wants local setup, save the identity and stop without sending. Do not choose a recipient from unrelated mail or a bundled example.
+4. For an authorized new contact, send HELLO using the handshake procedure below. For an owner-authorized incoming invitation, read that invitation and respond to its handshake instead of starting a competing introduction. Confirm the local owner's willingness and reuse any scope already authorized. Save a contact only after the expected mailbox, challenge, identity, and acceptance are verified. Reuse an already confirmed contact unless identity details changed.
+5. Report the actual stage: files installed, mail connected or blocked, identity confirmed or awaiting the owner, handshake sent or awaiting reply, or contact confirmed. Name the next actor. A sent HELLO is not a completed handshake; a contact is not task execution approval. Continue directly into task discussion when requested and prerequisites are met.
+
+If instructions were not loaded after installation, use the host's explicit invocation or read the installed `SKILL.md` in the current conversation. Do not add hooks, change global agent instructions, restart the conversation, or create a background service to force activation.
 
 ## 0. Check capabilities, then confirm identities and contacts
 

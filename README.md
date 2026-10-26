@@ -23,11 +23,25 @@ The recipient's agent answers to its own owner. A message from another agent can
 
 Your agent needs a way to load skill instructions, an authorized email connector with search/read/send/reply capabilities, and Python 3.9 or later for the local state helper. Attachment support depends on the connector. The agent checks available capabilities and uses the host's connection flow when one is available.
 
-The connector handles email and credentials. `scripts/state.py` only manages local records; it does not send mail, execute attachments, or keep an agent running. Task-local waiting depends on the host. Installing PeerWow does not start a task or contact anyone.
+The connector handles email and credentials. `scripts/state.py` only manages local records; it does not send mail, execute attachments, or keep an agent running. Task-local waiting depends on the host. Copying skill files does not invoke the skill. Use the install-and-setup request below to begin onboarding in the same conversation; external contact still requires the owner's intended recipient and consent.
 
 The skill instructions, reference documents, and interface prompts are in English. A separate Chinese README explains installation and usage.
 
 ## Install
+
+Recommended: give your agent this complete request, with the repository link:
+
+> Install PeerWow from https://github.com/yx9966/peerwow and start first-use setup now in this conversation. Read the installed SKILL.md and follow it; do not stop at "installed." Check available email capabilities and the connected account, guide me through the host's connection flow if needed, then confirm whom you represent and your agent identity. Ask whom I want to contact and their email if I have not provided them. Once I authorize that contact, complete the handshake and save the verified contact. If I am responding to an invitation, use that invitation's handshake. Do not start task execution until its scope is agreed and authorized.
+
+The agent should do the checks, then ask you only for missing identity, contact, and permission decisions. You do not need to write a technical authorization script. If your request already names the person and asks the agent to contact them, that scoped discussion need not be approved again.
+
+For an already installed copy, say:
+
+> Use PeerWow now and begin first-use setup in this conversation. Check my email capabilities, confirm my identity, and ask whom I want to contact. Reuse confirmed setup instead of creating duplicate identities or sending duplicate handshakes.
+
+Claude Code supports `/peerwow`; Codex supports `$peerwow`. A bare invocation enters setup when needed. If the skill is unavailable in the current catalog, ask the agent to read its installed `SKILL.md` directly. Skills load on invocation or relevance; PeerWow has no portable post-install hook. See the official [Claude Code](https://code.claude.com/docs/en/skills) and [Codex](https://learn.chatgpt.com/docs/build-skills) skill documentation.
+
+### Manual file installation
 
 Clone the public repository into a new directory:
 
@@ -35,7 +49,7 @@ Clone the public repository into a new directory:
 git clone https://github.com/yx9966/peerwow.git
 ```
 
-For an immediate trial, ask your agent to read the cloned `SKILL.md` and its referenced files. Native skill discovery is optional for this approach.
+For an immediate trial, ask your agent to read the cloned `SKILL.md` and begin first-use setup now. Native skill discovery is optional for this approach.
 
 For a personal skill installation, copy the skill files into the appropriate directory. Choose ONE target below, then run the shared copy commands. They stop if the destination already exists so an existing installation is not overwritten.
 
@@ -56,6 +70,8 @@ fi
 ```
 
 Run these commands from the parent directory of the cloned repository. If your host does not refresh its skill catalog in the current conversation, explicitly point the agent at the installed `SKILL.md`. This preserves the conversation while making the instructions available.
+
+After copying, use the setup request above. Shell commands install files only; they do not ask the agent to run onboarding. For updates, inspect the existing installation and local edits, then replace the skill files from the intended revision. Preserve private state at `~/.local/share/peerwow`; do not reset identities, contacts, or tasks.
 
 Other agents can load the same `SKILL.md` and supporting files using their platform's existing skill mechanism. PeerWow does not add email tools to a platform that lacks them.
 

@@ -41,12 +41,14 @@ Contacts live outside the skill installation. A historical contact is not permis
 
 ## Verification limits
 
-The packaged skill has not performed a live email handshake or completed live two-host acceptance. Offline tests do not access connectors, create real identities/contacts, or send mail. They establish helper behavior, not guaranteed model compliance.
+The round-two invitation was sent using the packaged skill; the bilateral handshake and live two-host acceptance have not been confirmed. The owner reported that two installing agents stopped after installation without entering identity setup or a handshake. This exposed a missing installation-to-setup transition. The entry point, install-and-setup prompts, and bare invocation now route to explicit first-use setup. This change has not yet been verified in those two remote sessions.
 
-The skill has not been installed and exercised in the peer's actual Claude Code environment. Instructions avoid Codex-specific tool names, but the destination platform must provide email access and task-local waiting. The helper requires Python 3.9 or later; missing dependencies are reported rather than installed automatically.
+Offline tests do not access connectors, create real identities/contacts, or send mail. They establish helper behavior, not guaranteed model compliance. Instructions avoid Codex-specific tool names, but the destination platform must provide email access and task-local waiting. The helper requires Python 3.9 or later; missing dependencies are reported rather than installed automatically.
+
+For the next owner-authorized installation check, observe both initiator and recipient behavior: install-and-setup should reach capability inspection and missing identity/contact questions in the current conversation; a disconnected account should reach a real connection entry point or a specific blocker; an invitation recipient should reply to the existing handshake after local consent; repeated invocation should preserve the same agent identity and avoid duplicate mail. Installation-only must not send mail. A second agent sharing a mailbox must use its own identity. Record actual outcomes rather than marking these scenarios passed from a document review.
 
 The helper cannot authenticate human approval, sandbox tool use, or prevent bypassing its checks. Deduplication and locks cover instances sharing one state directory, not independent cross-host copies. It does not promise exactly-once execution across those copies.
 
 Scopes are reviewable text. The helper checks levels, expiry, and revisions, but does not decide whether a command fits a path/data boundary. Peer grants are sourced reports, not independently verified approvals. Email handshakes do not cryptographically authenticate an individual agent. Offline peers cannot receive revocations immediately. No real contacts have been granted permissions by these tests.
 
-A second live collaboration test requires separate user confirmation. Documentation and offline validation do not resume any earlier automation or authorize new mail.
+The second live collaboration was separately authorized by the owner. These documentation changes and offline checks do not add participants, extend task budgets, resume earlier automation, or authorize unrelated mail.

@@ -1,4 +1,4 @@
 interface:
   display_name: "PeerWow"
   short_description: "Collaborate across agents with clear identities and permissions"
-  default_prompt: "Use $peerwow to agree on a task with the specified collaborator, confirm both owners' permissions, and exchange email updates through joint acceptance."
+  default_prompt: "Use $peerwow to check my email capabilities, confirm my identity and intended collaborator, and start an authorized handshake or resume our existing task."
