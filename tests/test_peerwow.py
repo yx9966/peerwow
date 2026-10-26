@@ -402,6 +402,26 @@ class StateTests(unittest.TestCase):
         self.checkpoint(token)
         self.assertEqual(self.tick()['seconds'], 60)
 
+    def test_early_native_wakeup_finishes_short_wait_in_current_turn(self):
+        self.loop()
+        token = self.tick()['cycle']
+        self.checkpoint(token)
+        self.now += 285
+        wait = self.tick()
+        self.assertEqual(wait['seconds'], 15)
+        self.assertTrue(wait['resume_in_turn'])
+        self.now += wait['seconds']
+        self.assertEqual(self.tick()['action'], 'poll')
+
+    def test_slow_message_handling_does_not_shift_poll_cadence(self):
+        self.loop()
+        started = self.now
+        token = self.tick()['cycle']
+        self.now += 80
+        self.checkpoint(token)
+        self.assertEqual(self.tick()['next_check_at'], started + 300)
+        self.assertFalse(self.tick()['resume_in_turn'])
+
     def test_loop_cannot_finish_partial_poll_or_unresolved_send(self):
         self.loop()
         token = self.tick()['cycle']

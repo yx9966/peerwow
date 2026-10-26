@@ -99,7 +99,8 @@ def loop_action(state, task, now):
         return dict(action="work", checkpoint=task["checkpoint"])
     due = loop["next_check_at"]
     if now < due:
-        return dict(action="wait", seconds=min(60, due - now), next_check_at=due)
+        return dict(action="wait", seconds=min(60, due - now), next_check_at=due,
+                    resume_in_turn=due - now <= 60)
     addresses = sorted({state["contacts"][task["agent_id"] + ":" + p]["email"]
                         for p in task["participants"] if p != task["agent_id"]})
     # Quote mailbox operands; task IDs are already restricted by ident().
@@ -284,7 +285,10 @@ def apply(state, action, data, now):
         task["checkpoint"] = data["summary"]
         loop.update(cycle=None, next_action="work" if data["next_action"] == "work" else "poll")
         if data["next_action"] == "wait":
-            loop["next_check_at"] = min(now + loop["interval_seconds"], task["deadline"])
+            # Keep the polling cadence anchored to the start of the poll. A slow
+            # reply must not defer the next check by an extra full interval.
+            due = cycle["started"] + loop["interval_seconds"] if cycle["action"] == "poll" else loop["next_check_at"]
+            loop["next_check_at"] = min(max(now, due), task["deadline"])
         elif data["next_action"] == "blocked":
             loop.update(status="stopped", reason=data["summary"])
         return loop

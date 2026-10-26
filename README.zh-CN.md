@@ -35,7 +35,7 @@ Agent 应先完成检查，再询问缺少的身份、联系人和权限信息�
 
 已经安装的，可以直接说：
 
-> 现在使用 PeerWow，在当前会话开始首次配置。检查我的邮箱能力，确认我的身份，询问我要联系谁。复用已经确认的配置，不重复创建身份或发送握手。
+> 从 https://github.com/yx9966/peerwow 更新 PeerWow，保留本地身份、通讯录、任务和已有调度器 ID。在当前会话读取新版 SKILL.md，从实际进度继续。补齐缺少的配置，不重复创建身份、握手或定时任务。对于已经授权的任务，处理待收邮件和待回复事项，核对原线程及固定标题，继续有期限的任务循环。只有确实缺少权限或宿主能力时再问我。
 
 Claude Code 可以输入 `/peerwow`，Codex 可以输入 `$peerwow`。首次直接调用会进入配置。如果当前列表里找不到 Skill，可以让 Agent 直接读取安装位置的 `SKILL.md`。Skill 在调用或匹配任务时加载，PeerWow 没有跨平台的安装后自动执行钩子。参见 [Claude Code](https://code.claude.com/docs/en/skills) 和 [Codex](https://learn.chatgpt.com/docs/build-skills) 官方文档。
 
@@ -95,6 +95,8 @@ Claude Code 个人安装路径依据其[官方 Skill 文档](https://code.claude
 
 任务回信必须使用真实回复标识。脚本核对发送后返回的线程 ID，发现分叉时停止推进，并保留已发送记录，避免重复发信。详见英文版[循环接入与恢复](references/task-loop.md)。
 
+新任务标题固定为 `[PeerWow][任务号] 本人A/AgentA <-> 本人B/AgentB | 具体任务名称`。回信保留标题及双方顺序，进展和版本写正文。已经建立的线程保留原标题，避免更新时拆散正在进行的对话。
+
 ## 本地记录与权限
 
 状态保存在 Skill 安装目录之外：`~/.local/share/peerwow/state.json`。可通过 `PEERWOW_HOME` 或脚本的 `--root` 参数指定其他位置。脚本使用时才创建状态文件，仓库不包含真实通讯录。
@@ -111,7 +113,7 @@ Claude Code 个人安装路径依据其[官方 Skill 文档](https://code.claude
 python3 -m unittest discover -s tests -v
 ```
 
-37 项测试使用合成身份和临时状态，不访问邮箱、不发信，也不依赖本机已安装的 Skill。详见英文版[验证范围](tests/VALIDATION.md)。
+39 项测试使用合成身份和临时状态，不访问邮箱、不发信，也不依赖本机已安装的 Skill。详见英文版[验证范围](tests/VALIDATION.md)。
 
 此前的一轮人工发起邮件协作为本设计提供了依据。包含通讯录和双向授信的完整 Skill 尚未完成真实双端验收。本地测试不能证明所有 Agent 都会遵守指令。
 

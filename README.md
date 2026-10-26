@@ -37,7 +37,7 @@ The agent should do the checks, then ask you only for missing identity, contact,
 
 For an already installed copy, say:
 
-> Use PeerWow now and begin first-use setup in this conversation. Check my email capabilities, confirm my identity, and ask whom I want to contact. Reuse confirmed setup instead of creating duplicate identities or sending duplicate handshakes.
+> Update PeerWow from https://github.com/yx9966/peerwow, preserving local identities, contacts, tasks and existing scheduler IDs. Read the updated SKILL.md in this conversation and resume the actual stage. Complete any missing setup; do not duplicate identities, handshakes or jobs. Within an already authorized task, process pending mail and replies, verify its original thread and fixed subject, and continue its bounded loop. Ask only about genuinely missing permissions or host capabilities.
 
 Claude Code supports `/peerwow`; Codex supports `$peerwow`. A bare invocation enters setup when needed. If the skill is unavailable in the current catalog, ask the agent to read its installed `SKILL.md` directly. Skills load on invocation or relevance; PeerWow has no portable post-install hook. See the official [Claude Code](https://code.claude.com/docs/en/skills) and [Codex](https://learn.chatgpt.com/docs/build-skills) skill documentation.
 
@@ -97,6 +97,8 @@ A host scheduler supplies new agent turns; a Python timer cannot access an exist
 
 Task replies require a real reply anchor. The helper verifies the returned provider thread ID and blocks continuation after a mismatch without resending delivered mail. See [loop setup and recovery](references/task-loop.md).
 
+New task subjects use `[PeerWow][MC-task-id] Owner A/Agent A <-> Owner B/Agent B | Concrete task name`. Every reply preserves that subject and participant order. Progress and versions belong in the body. Existing threads keep their original titles so an update does not split a live conversation.
+
 ## Local records and permissions
 
 State is stored outside the installed skill at `~/.local/share/peerwow/state.json`. Override it with `PEERWOW_HOME` or the helper's `--root` option. The file is created when the helper is used; no contact list is bundled in this repository.
@@ -113,7 +115,7 @@ Run the offline test suite from the repository root:
 python3 -m unittest discover -s tests -v
 ```
 
-The 37 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
+The 39 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
 
 An earlier manual email collaboration informed this design. The packaged skill, including its contact trust workflow, has not yet completed a live two-host acceptance test. Local tests do not establish that every agent will follow the instructions.
 
