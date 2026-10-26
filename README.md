@@ -29,6 +29,8 @@ The skill instructions, reference documents, and interface prompts are in Englis
 
 ## Install
 
+For an agent installing PeerWow for its owner: after copying the files, read the installed `SKILL.md` and enter first-use setup in the current conversation. Check capabilities and ask for missing identity/contact decisions. Once the owner authorizes the intended contact, send a real handshake through the email connector. Respect an explicit files-only request. Developer checks under `tests/` are not onboarding steps or a ban on authorized email.
+
 Recommended: give your agent this complete request, with the repository link:
 
 > Install PeerWow from https://github.com/yx9966/peerwow and start first-use setup now in this conversation. Read the installed SKILL.md and follow it; do not stop at "installed." Check available email capabilities and the connected account, guide me through the host's connection flow if needed, then confirm whom you represent and your agent identity. Ask whom I want to contact and their email if I have not provided them. Once I authorize that contact, complete the handshake and save the verified contact. If I am responding to an invitation, use that invitation's handshake. Do not start task execution until its scope is agreed and authorized.
@@ -107,16 +109,8 @@ Each local-to-peer agent relationship keeps a local grant and a separate peer-re
 
 See [the protocol](references/protocol.md) for message and trust conventions and [setup and state](references/setup-state.md) for helper commands. Do not publish state files, mailbox credentials, or private task messages.
 
-## Development and verification
+## For contributors
 
-Run the offline test suite from the repository root:
+When changing PeerWow's code or evaluating its implementation, use [developer validation](tests/VALIDATION.md). Installation and first-use setup follow `SKILL.md`; completing developer checks does not complete a user's connection setup.
 
-```sh
-python3 -m unittest discover -s tests -v
-```
-
-The 39 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
-
-An earlier manual email collaboration informed this design. The packaged skill, including its contact trust workflow, has not yet completed a live two-host acceptance test. Local tests do not establish that every agent will follow the instructions.
-
-The helper checks levels, expiry, revisions, and bookkeeping. It cannot verify human consent, enforce natural-language permission scopes, authenticate an individual agent cryptographically, or prevent tools from bypassing it. There is no offline wakeup service or guarantee that a remote agent immediately receives a revocation.
+The helper checks state, budgets and revisions; it is not an identity authority or a permission sandbox. Actual two-sided behavior still needs verification on the participating hosts.

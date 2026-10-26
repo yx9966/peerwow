@@ -15,7 +15,9 @@ Use the same workflow for initiators, recipients, and additional participants. U
 - Ongoing task: restore local records and unfinished messages, then continue from the last confirmed stage. Do not repeat setup or ask again for authorization already given.
 - Closed task: reading a retrospective is allowed; retrospectives, thanks, and new mail in an old thread do not automatically restart work.
 
-A request to create or review this skill authorizes work on the skill itself. Installation alone does not authorize external contact or task execution. When installing for use, load the installed instructions and offer first-use setup in the same conversation; an explicit install-and-setup request starts it immediately. Respect an explicit install-only request. Files copied by a package manager cannot themselves trigger an agent turn; never claim an automatic post-install hook exists.
+A request to create or review this skill authorizes work on the skill itself. When installing for use, load the installed instructions and enter first-use setup in the same conversation: inspect capabilities and ask for missing identity/contact decisions. Installation alone does not authorize external contact or task execution; send the handshake once the owner has authorized the intended contact, reusing existing consent. Respect an explicit files-only installation request. Files copied by a package manager cannot themselves trigger an agent turn; never claim an automatic post-install hook exists.
+
+Repository unit tests and `tests/VALIDATION.md` are developer checks, not the user onboarding procedure. Their synthetic fixtures do not send mail; that is not a restriction on real, owner-authorized PeerWow communication. Do not substitute a passing test suite for mailbox setup or a real handshake, and do not run repository tests as an installation prerequisite unless the owner requested verification or a concrete installation problem requires it.
 
 ## First-use setup
 

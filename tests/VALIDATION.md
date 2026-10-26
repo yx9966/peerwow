@@ -1,6 +1,14 @@
-# PeerWow local validation
+# PeerWow developer validation
 
-Skill entry point: `SKILL.md`. Offline tests: `tests/test_peerwow.py`.
+This document is for contributors changing or evaluating the implementation. User installation and onboarding follow `SKILL.md`. The unit tests below intentionally use synthetic fixtures without real email. This describes the test program; it does not prohibit an installed agent from sending an owner-authorized handshake or task reply. A passing suite does not complete user setup.
+
+Run from the repository root when doing developer verification:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+Skill entry point: `SKILL.md`. Test implementation: `tests/test_peerwow.py`.
 
 ## Completed checks
 
