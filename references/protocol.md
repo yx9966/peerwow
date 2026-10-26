@@ -6,6 +6,8 @@ Use this reference for handshakes, task discussion, and execution messages. Pref
 
 Subject: `[MC-task-id] Short task title`. The initiator generates a random task ID, such as MC- followed by a UUID; recipients reuse it. Do not infer identity from the subject alone. Start a new thread for a new task. Use the connector's reply/reply_message_id capability, not just a manually added Re:. With a raw mail API, maintain In-Reply-To and References as required. Provider message/thread IDs locate records within an account; they are not shared global task IDs.
 
+Bind and verify the canonical thread using the [task-loop controller](task-loop.md#canonical-email-thread). Threading is a required transport capability for task replies. If unavailable, report a blocker before sending; do not silently substitute a new thread. After a split has already occurred, recover by task/message ID without resending, retain the failure evidence, and use the verified original anchor for subsequent replies.
+
 Begin the body with a JSON block, followed by natural-language content:
 
 ```json

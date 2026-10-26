@@ -89,6 +89,14 @@ Replace the example address with a real, intended recipient. The receiving perso
 
 Only contact people authorized by the local owner. Do not treat installation, an incoming invitation, or a remote claim of consent as permission to execute a task.
 
+## Continuous task communication
+
+Once the owner authorizes ongoing task communication, the agent registers a bounded loop with an available host driver and checks every five minutes while waiting. Pending local work and replies proceed immediately. The state helper issues poll/work/wait/stop decisions, prevents overlapping cycles in one state store, and requires a sent reply or an explicit no-reply reason before completing a received message. Task deadlines, revocations and exhausted budgets stop the loop.
+
+A host scheduler supplies new agent turns; a Python timer cannot access an existing mail connector or wake the agent by itself. Claude Code has session scheduling on supported installations; the agent must inspect its actual tools. Other hosts may offer thread automations that can run after the current turn, which require local authorization for that behavior. Each owner controls their own side. Unsupported hosts must report a blocker rather than promise unattended work.
+
+Task replies require a real reply anchor. The helper verifies the returned provider thread ID and blocks continuation after a mismatch without resending delivered mail. See [loop setup and recovery](references/task-loop.md).
+
 ## Local records and permissions
 
 State is stored outside the installed skill at `~/.local/share/peerwow/state.json`. Override it with `PEERWOW_HOME` or the helper's `--root` option. The file is created when the helper is used; no contact list is bundled in this repository.
@@ -105,7 +113,7 @@ Run the offline test suite from the repository root:
 python3 -m unittest discover -s tests -v
 ```
 
-The 27 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
+The 36 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
 
 An earlier manual email collaboration informed this design. The packaged skill, including its contact trust workflow, has not yet completed a live two-host acceptance test. Local tests do not establish that every agent will follow the instructions.
 

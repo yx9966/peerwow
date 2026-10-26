@@ -4,10 +4,10 @@ Skill entry point: `SKILL.md`. Offline tests: `tests/test_peerwow.py`.
 
 ## Completed checks
 
-- The skill includes interface metadata, two reference documents, and one Python standard-library state helper. Instructions, metadata, examples, and validation notes are in English; the Chinese README is separate.
+- The skill includes interface metadata, three reference documents, and one Python standard-library state helper. Instructions, metadata, examples, and validation notes are in English; the Chinese README is separate.
 - The skill-creator validator passes. No scaffold placeholders, real email addresses, prior contacts, task records, credentials, or test caches are bundled in the skill archive.
-- `python3 -m unittest discover -s tests -v`: 27 local tests pass.
-- The skill ZIP contains five files. CRC verification passes, and extracted bytes match the installed source. The companion SHA256 checks copy integrity; it is not an independent publisher signature.
+- `python3 -m unittest discover -s tests -v`: 36 local tests pass.
+- The skill ZIP contains six files. CRC verification passes, and extracted bytes match the installed source. The companion SHA256 checks copy integrity; it is not an independent publisher signature.
 
 ## Test coverage
 
@@ -38,6 +38,12 @@ Setup discovers email tools and account access instead of asking users to identi
 Initiators and recipients need their own owners' discussion authorization. They may clarify the task over multiple rounds. Task and permission approval can be combined, and clear existing authorization is reused. Only additional scope needs additional approval; host-enforced prompts cannot be bypassed.
 
 Contacts live outside the skill installation. A historical contact is not permission to execute a new task. Task-local waiting does not create a persistent service, cross-session automation, or offline wakeup. Retrospectives and thanks do not reopen a closed task.
+
+## Loop and thread checks
+
+Nine additional offline tests cover two poll/process/reply cycles, mandatory reply dispositions, partial polling, uncertain sends, cycle overlap, scheduler IDs, revocation, deadline and budget stops, immediate local work, and canonical-thread failures. A provider thread mismatch is retained as a sent message and cannot be blindly retried. Tests use synthetic scheduler IDs and do not establish actual host scheduling or peer consent.
+
+Live feedback also exposed a split peer thread and a claim that the peer required manual turn triggers. The local side recovered the mail by task ID and asked the peer to inspect actual session-loop tools. Shared mailbox agents remain separate participants. The loop controller and scheduler registration must be observed on each real host before calling unattended collaboration successful.
 
 ## Verification limits
 

@@ -29,8 +29,12 @@ class StateTests(unittest.TestCase):
                       discussion_evidence='Synthetic user fixture consent', deadline=self.now + 600,
                       max_outgoing=3, checkpoint='Discussing')
         self.call('task-put', **self.t)
+        self.call('task-thread', agent_id=self.a, task_id='MC-test', thread_id='fixture-thread',
+                  reply_message_id='fixture-root', evidence='Synthetic provider metadata')
 
     def call(self, action, **data):
+        if action == 'outbox-resolve' and data.get('outcome') == 'sent':
+            data.setdefault('thread_id', 'fixture-thread')
         return m.apply(self.s, action, data, self.now)
 
     def contact(self, peer, address='peer@example.test'):
@@ -251,6 +255,8 @@ class StateTests(unittest.TestCase):
                                         agreement_sha256=ah, mail_id='ready-fixture', scope='Synthetic data only', trust=dict(local=1, peer=1))}))
             tasks[local] = t
             self.call('task-put', **t)
+            self.call('task-thread', agent_id=local, task_id='MC-two-roles', thread_id='fixture-thread',
+                      reply_message_id='fixture-root', evidence='Synthetic provider metadata')
         for local, peer, address, kind in [(self.a, b, 'owner@example.test', 'WORK'), (b, self.a, 'peer@example.test', 'RESULT')]:
             out = self.call('outbox-prepare', agent_id=local, task_id='MC-two-roles', kind=kind, to_agents=[peer], body='Synthetic payload')
             mid = out['message_id']
@@ -342,6 +348,127 @@ class StateTests(unittest.TestCase):
                       reply_from='peer@example.test', peer_agent_id='ag-sibling', peer_name='Sibling', mail_id='sibling-hello')
         self.assertEqual(c['local_trust']['level'], 'discuss')
         self.assertEqual(c['peer_trust']['revision'], 0)
+
+    def loop(self, **changes):
+        return self.call('loop-start', **dict(agent_id=self.a, task_id='MC-test', driver='native',
+                         scheduler_id='fixture-scheduler', interval_seconds=300,
+                         evidence='Synthetic owner approval', **changes))
+
+    def tick(self):
+        return self.call('loop-next', agent_id=self.a, task_id='MC-test')
+
+    def checkpoint(self, cycle, **changes):
+        data = dict(agent_id=self.a, task_id='MC-test', cycle=cycle, next_action='wait',
+                    poll_complete=True, summary='Processed all pages; peer acts next')
+        data.update(changes)
+        return self.call('loop-checkpoint', **data)
+
+    def test_loop_two_rounds_require_actual_sent_replies(self):
+        self.loop()
+        for i in range(2):
+            tick = self.tick()
+            self.assertEqual(tick['action'], 'poll')
+            self.assertNotIn('is:unread', tick['query'])
+            self.assertEqual(tick['expected_agents'], [self.peer])
+            incoming = self.incoming(message_id='msg-round-' + str(i))
+            claim = self.call('inbox-claim', **incoming)
+            with self.assertRaisesRegex(ValueError, 'Finish received'):
+                self.checkpoint(tick['cycle'])
+            with self.assertRaisesRegex(ValueError, 'sent reply'):
+                self.call('inbox-done', agent_id=self.a, task_id='MC-test', message_id=incoming['message_id'], claim=claim['claim'])
+            sent = self.outgoing()
+            self.assertEqual(sent['reply_message_id'], 'fixture-root')
+            with self.assertRaisesRegex(ValueError, 'Confirmed reply'):
+                self.call('inbox-done', agent_id=self.a, task_id='MC-test', message_id=incoming['message_id'],
+                          claim=claim['claim'], disposition='replied', reply_message_id=sent['message_id'])
+            self.call('outbox-resolve', agent_id=self.a, task_id='MC-test', message_id=sent['message_id'],
+                      outcome='sent', mail_id='fixture-' + str(i), evidence='Synthetic confirmed send')
+            self.call('inbox-done', agent_id=self.a, task_id='MC-test', message_id=incoming['message_id'],
+                      claim=claim['claim'], disposition='replied', reply_message_id=sent['message_id'])
+            self.checkpoint(tick['cycle'])
+            self.assertEqual(self.tick()['action'], 'wait')
+            self.now += 300
+        self.assertEqual(self.tick()['action'], 'stop')  # Original deadline; no extension.
+
+    def test_loop_no_duplicate_scheduler_or_overlapping_cycle(self):
+        self.loop()
+        with self.assertRaisesRegex(ValueError, 'already active'):
+            self.loop()
+        token = self.tick()['cycle']
+        self.assertEqual(self.tick()['action'], 'busy')
+        with self.assertRaisesRegex(ValueError, 'token'):
+            self.checkpoint('wrong')
+        self.checkpoint(token)
+        self.assertEqual(self.tick()['seconds'], 60)
+
+    def test_loop_cannot_finish_partial_poll_or_unresolved_send(self):
+        self.loop()
+        token = self.tick()['cycle']
+        with self.assertRaisesRegex(ValueError, 'all relevant'):
+            self.checkpoint(token, poll_complete=False)
+        self.outgoing()
+        self.assertEqual(self.tick()['action'], 'reconcile_send')
+        with self.assertRaisesRegex(ValueError, 'pending send'):
+            self.checkpoint(token)
+
+    def test_loop_no_reply_requires_reason(self):
+        self.loop()
+        token = self.tick()['cycle']
+        incoming = self.incoming()
+        claim = self.call('inbox-claim', **incoming)
+        data = dict(agent_id=self.a, task_id='MC-test', message_id=incoming['message_id'], claim=claim['claim'], disposition='no_reply')
+        with self.assertRaisesRegex(ValueError, 'why'):
+            self.call('inbox-done', **data)
+        self.call('inbox-done', **data, reason='Synthetic courtesy acknowledgment; no action requested')
+        self.checkpoint(token)
+
+    def test_loop_revocation_stops_and_returns_cleanup_id(self):
+        self.loop()
+        self.trust(level='blocked', allowed=[])
+        result = self.tick()
+        self.assertEqual(result['action'], 'stop')
+        self.assertEqual(result['scheduler_id'], 'fixture-scheduler')
+
+    def test_loop_budget_exhaustion_stops(self):
+        self.loop()
+        for i in range(3):
+            sent = self.outgoing()
+            self.call('outbox-resolve', agent_id=self.a, task_id='MC-test', message_id=sent['message_id'],
+                      outcome='sent', mail_id='sent-' + str(i), evidence='Synthetic send')
+        self.assertEqual(self.tick()['reason'], 'Outgoing budget exhausted')
+
+    def test_loop_local_work_is_not_delayed_until_poll(self):
+        self.loop()
+        token = self.tick()['cycle']
+        self.checkpoint(token, next_action='work', summary='Local authorized specification drafting remains')
+        self.assertEqual(self.tick()['action'], 'work')
+
+    def test_loop_host_id_required_and_task_update_preserves_loop(self):
+        with self.assertRaisesRegex(ValueError, 'scheduler ID'):
+            self.call('loop-start', agent_id=self.a, task_id='MC-test', driver='native', evidence='Synthetic approval')
+        self.loop()
+        self.call('task-put', **{**self.t, 'checkpoint': 'Updated'})
+        self.assertEqual(self.tick()['action'], 'poll')
+
+    def test_thread_binding_required_and_mismatch_counts_as_sent(self):
+        task = self.s['tasks'][self.a + ':MC-test']
+        task.pop('thread')
+        with self.assertRaisesRegex(ValueError, 'canonical'):
+            self.outgoing()
+        self.call('task-thread', agent_id=self.a, task_id='MC-test', thread_id='fixture-thread',
+                  reply_message_id='fixture-root', evidence='Original source metadata')
+        self.loop()
+        sent = self.outgoing()
+        result = self.call('outbox-resolve', agent_id=self.a, task_id='MC-test', message_id=sent['message_id'],
+                           outcome='sent', mail_id='split-mail', thread_id='unexpected-split', evidence='Actual provider response')
+        self.assertEqual(result['status'], 'sent')
+        self.assertFalse(result['thread_verified'])
+        self.assertEqual(self.tick()['action'], 'stop')
+        with self.assertRaisesRegex(ValueError, 'thread conflict'):
+            self.outgoing()
+        self.call('task-thread', agent_id=self.a, task_id='MC-test', thread_id='fixture-thread',
+                  reply_message_id='fixture-root', evidence='Original anchor rechecked; split mail retained, no resend')
+        self.assertEqual(task['outbox'][sent['message_id']]['status'], 'sent')
 
 
 if __name__ == '__main__':

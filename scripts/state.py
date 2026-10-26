@@ -70,6 +70,44 @@ def check_trust(state, task, peers, now, execution=False):
                     "Trust changed or not acknowledged: refresh authorization and READY")
 
 
+def loop_action(state, task, now):
+    """Decide the next step; the host agent still calls the mail connector."""
+    loop = task.get("loop")
+    require(loop is not None, "No task loop configured")
+    if loop["status"] != "active":
+        return dict(action="stop", reason=loop.get("reason", "Loop stopped"))
+    if task["phase"] == "closed" or now >= task["deadline"]:
+        return dict(action="stop", reason="Task closed or deadline reached")
+    if task.get("thread_conflict"):
+        return dict(action="stop", reason="Resolve thread conflict without resending delivered mail")
+    try:
+        check_trust(state, task, [p for p in task["participants"] if p != task["agent_id"]],
+                    now, task["phase"] == "execute")
+    except ValueError as exc:
+        return dict(action="stop", reason=str(exc))
+    pending = [mid for mid, msg in task["outbox"].items() if msg["status"] == "prepared"]
+    if pending:
+        return dict(action="reconcile_send", message_ids=pending)
+    if sum(m["status"] != "not_sent" for m in task["outbox"].values()) >= task["max_outgoing"]:
+        return dict(action="stop", reason="Outgoing budget exhausted")
+    if loop.get("cycle"):
+        return dict(action="busy", reason="Unfinished cycle; reconcile its work before releasing its token")
+    pending = [mid for mid, msg in task["inbox"].items() if msg["status"] == "processing"]
+    if pending:
+        return dict(action="reconcile_inbox", message_ids=pending)
+    if loop["next_action"] == "work":
+        return dict(action="work", checkpoint=task["checkpoint"])
+    due = loop["next_check_at"]
+    if now < due:
+        return dict(action="wait", seconds=min(60, due - now), next_check_at=due)
+    addresses = sorted({state["contacts"][task["agent_id"] + ":" + p]["email"]
+                        for p in task["participants"] if p != task["agent_id"]})
+    # Quote mailbox operands; task IDs are already restricted by ident().
+    senders = " ".join("from:" + json.dumps(a) for a in addresses)
+    return dict(action="poll", query='in:anywhere "' + task["task_id"] + '" {' + senders + '}',
+                expected_agents=[p for p in task["participants"] if p != task["agent_id"]])
+
+
 def apply(state, action, data, now):
     require(type(data) is dict, "Input must be a JSON object")
     if action == "show":
@@ -176,6 +214,12 @@ def apply(state, action, data, now):
                                     "discussion_evidence", "participants", "coordinator", "deadline", "max_outgoing")}
         task.update(agreement_sha256=ah, authorization=auth, checkpoint=data.get("checkpoint", ""),
                     inbox=old["inbox"] if old else {}, outbox=old["outbox"] if old else {})
+        if old and "loop" in old:
+            task["loop"] = old["loop"]
+        if old:
+            for field in ("thread", "thread_conflict"):
+                if field in old:
+                    task[field] = old[field]
         require(type(task["checkpoint"]) is str, "Checkpoint must be text")
         require(sum(x["status"] != "not_sent" for x in task["outbox"].values()) <= task["max_outgoing"], "Limit is below existing outgoing reservations")
         if task["phase"] != "closed":
@@ -184,6 +228,63 @@ def apply(state, action, data, now):
         return task
     require(old is not None, "Unknown task")
     task = old
+    if action == "task-thread":
+        require(all(text(data.get(k)) for k in ("thread_id", "reply_message_id", "evidence")),
+                "Actual provider thread, reply anchor and source evidence required")
+        require(not any(x["status"] == "prepared" for x in task["outbox"].values()), "Reconcile pending send before changing thread")
+        task["thread"] = {k: data[k] for k in ("thread_id", "reply_message_id", "evidence")}
+        task.pop("thread_conflict", None)
+        return task["thread"]
+    if action == "loop-stop":
+        require("loop" in task and text(data.get("reason")), "Loop and stop reason required")
+        task["loop"].update(status="stopped", reason=data["reason"])
+        return dict(action="stop", scheduler_id=task["loop"].get("scheduler_id"),
+                    reason=data["reason"], cleanup="Cancel or pause this scheduler using the host tool")
+    if action == "loop-start":
+        require(task["phase"] != "closed" and now < task["deadline"], "Task closed or expired")
+        require(not task.get("thread_conflict"), "Resolve thread conflict before starting loop")
+        check_trust(state, task, [p for p in task["participants"] if p != agent_id], now,
+                    task["phase"] == "execute")
+        require(not task.get("loop") or task["loop"]["status"] != "active", "Task loop already active; do not create another scheduler")
+        require(not task.get("loop", {}).get("cycle"), "Reconcile unfinished cycle before restarting")
+        require(data.get("driver") in ("foreground", "native"), "Use an available foreground or native host driver")
+        require(text(data.get("evidence")), "Local owner authorization for this bounded loop required")
+        require(type(data.get("interval_seconds", 300)) is int and 60 <= data.get("interval_seconds", 300) <= 3600,
+                "Polling interval must be 60..3600 seconds")
+        require(data["driver"] != "native" or text(data.get("scheduler_id")), "Actual host scheduler ID required; creating state is not scheduling")
+        task["loop"] = dict(status="active", driver=data["driver"], scheduler_id=data.get("scheduler_id"),
+                            evidence=data["evidence"], interval_seconds=data.get("interval_seconds", 300),
+                            next_check_at=now, next_action="poll", cycle=None, started=now)
+        return task["loop"]
+    if action == "loop-next":
+        result = loop_action(state, task, now)
+        if result["action"] == "stop":
+            task["loop"].update(status="stopped", reason=result["reason"])
+            result.update(scheduler_id=task["loop"].get("scheduler_id"), cleanup="Cancel or pause the host scheduler")
+        if result["action"] in ("poll", "work"):
+            token = new_id("cycle-")
+            task["loop"]["cycle"] = dict(token=token, action=result["action"], started=now)
+            result["cycle"] = token
+        return result
+    if action == "loop-checkpoint":
+        loop = task.get("loop", {})
+        cycle = loop.get("cycle")
+        require(cycle and data.get("cycle") == cycle["token"], "Matching active cycle token required")
+        require(data.get("next_action") in ("wait", "work", "blocked"), "Choose wait, work, or blocked")
+        require(text(data.get("summary")), "Cycle outcome and next actor required")
+        # A genuine blocker may release a cycle while leaving uncertain effects for recovery.
+        if data["next_action"] != "blocked":
+            require(not any(x["status"] == "prepared" for x in task["outbox"].values()), "Reconcile pending send before waiting")
+            require(not any(x["status"] == "processing" for x in task["inbox"].values()), "Finish received messages before waiting")
+            if cycle["action"] == "poll":
+                require(data.get("poll_complete") is True, "Read all relevant search pages before completing poll")
+        task["checkpoint"] = data["summary"]
+        loop.update(cycle=None, next_action="work" if data["next_action"] == "work" else "poll")
+        if data["next_action"] == "wait":
+            loop["next_check_at"] = min(now + loop["interval_seconds"], task["deadline"])
+        elif data["next_action"] == "blocked":
+            loop.update(status="stopped", reason=data["summary"])
+        return loop
     # Reconciliation remains possible after close/expiry, without new work or mail.
     if action == "outbox-resolve":
         m = task["outbox"].get(data.get("message_id", ""))
@@ -191,14 +292,35 @@ def apply(state, action, data, now):
         require(data.get("outcome") in ("sent", "not_sent") and text(data.get("evidence")), "Definite delivery outcome and evidence required")
         if data["outcome"] == "sent":
             require(text(data.get("mail_id")), "Provider sent-message ID required")
+            if m.get("expected_thread_id"):
+                require(text(data.get("thread_id")), "Provider thread ID required to verify actual reply")
         m.update(status=data["outcome"], evidence=data["evidence"], mail_id=data.get("mail_id"), resolved=now)
+        if data["outcome"] == "sent" and m.get("expected_thread_id"):
+            m["thread_id"] = data["thread_id"]
+            m["thread_verified"] = data["thread_id"] == m["expected_thread_id"]
+            if not m["thread_verified"]:
+                # Delivery happened. Record it and count it; never invite a resend.
+                task["thread_conflict"] = dict(message_id=data["message_id"], expected=m["expected_thread_id"], actual=data["thread_id"])
+                if "loop" in task:
+                    task["loop"].update(status="stopped", reason="Sent message split from canonical thread; reconcile without resending")
         return m
     if action == "inbox-done":
         m = task["inbox"].get(data.get("message_id", ""))
         require(m is not None and m["status"] == "processing" and data.get("claim") == m["claim"], "No matching message claim")
+        if "loop" in task:
+            disposition = data.get("disposition")
+            require(disposition in ("replied", "no_reply"), "Record sent reply or explicit no-reply reason")
+            if disposition == "replied":
+                reply = task["outbox"].get(data.get("reply_message_id", ""))
+                require(reply is not None and reply["status"] == "sent"
+                        and m.get("from_agent") in reply["to_agents"], "Confirmed reply to this sender required")
+            else:
+                require(text(data.get("reason")), "Explain why this message needs no reply")
+            m.update(disposition=disposition, reply_message_id=data.get("reply_message_id"), reason=data.get("reason"))
         m.update(status="done", summary=data.get("summary", ""), completed=now)
         return m
     require(task["phase"] != "closed" and now < task["deadline"], "Task closed or expired")
+    require(not task.get("thread_conflict"), "Resolve thread conflict; sent mail must not be resent")
     if action == "task-check":
         check_trust(state, task, [p for p in task["participants"] if p != agent_id], now,
                     task["phase"] == "execute")
@@ -219,10 +341,12 @@ def apply(state, action, data, now):
         if previous:
             require(previous["fingerprint"] == fingerprint, "Same message ID with different content")
             return dict(status=previous["status"], message_id=mid, duplicate=True)
-        m = dict(status="processing", fingerprint=fingerprint, claim=new_id("claim-"), mail_id=data["mail_id"], created=now)
+        m = dict(status="processing", fingerprint=fingerprint, claim=new_id("claim-"), mail_id=data["mail_id"],
+                 from_agent=sender, created=now)
         task["inbox"][mid] = m
         return dict(message_id=mid, duplicate=False, **m)
     if action == "outbox-prepare":
+        require("thread" in task, "Bind the canonical provider thread and actual reply anchor before sending")
         recipients = data.get("to_agents")
         require(type(recipients) is list and recipients and len(set(recipients)) == len(recipients)
                 and all(p in task["participants"] and p != agent_id for p in recipients), "Explicit task recipients required")
@@ -242,7 +366,8 @@ def apply(state, action, data, now):
                 type(a.get("sha256")) is str and re.fullmatch(r"[a-f0-9]{64}", a["sha256"]) for a in attachments), "Attachment names and original-byte SHA256 required")
         mid = new_id("msg-")
         m = dict(status="prepared", created=now, kind=data["kind"], to_agents=recipients,
-                 body=data["body"], attachments=attachments, revision=task["revision"])
+                 body=data["body"], attachments=attachments, revision=task["revision"],
+                 reply_message_id=task["thread"]["reply_message_id"], expected_thread_id=task["thread"]["thread_id"])
         task["outbox"][mid] = m
         return dict(message_id=mid, **m)
     raise ValueError("Unknown action")
@@ -258,7 +383,8 @@ def secure_file(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["show", "identity-add", "handshake-start", "handshake-finish", "contact-trust", "task-put", "task-check",
-                                           "inbox-claim", "inbox-done", "outbox-prepare", "outbox-resolve"])
+                                           "inbox-claim", "inbox-done", "outbox-prepare", "outbox-resolve",
+                                           "loop-start", "loop-next", "loop-checkpoint", "loop-stop", "task-thread"])
     parser.add_argument("--root", default=os.environ.get("PEERWOW_HOME", "~/.local/share/peerwow"))
     parser.add_argument("--input", default="-", help="JSON file; default stdin. No executable input.")
     args = parser.parse_args()
