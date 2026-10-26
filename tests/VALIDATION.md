@@ -14,13 +14,13 @@ Skill entry point: `SKILL.md`. Test implementation: `tests/test_peerwow.py`.
 
 - The skill includes interface metadata, three reference documents, and one Python standard-library state helper. Instructions, metadata, examples, and validation notes are in English; the Chinese README is separate.
 - The skill-creator validator passes. No scaffold placeholders, real email addresses, prior contacts, task records, credentials, or test caches are bundled in the skill archive.
-- `python3 -m unittest discover -s tests -v`: 39 local tests pass.
+- `python3 -m unittest discover -s tests -v`: 44 local tests pass.
 - The skill ZIP contains six files. CRC verification passes, and extracted bytes match the installed source. The companion SHA256 checks copy integrity; it is not an independent publisher signature.
 
 ## Test coverage
 
 1. Distinct local and peer agent identities sharing one mailbox.
-2. A pending handshake, matching mailbox, and echoed identifier are required to save a contact.
+2. Initiators need a pending handshake and matching reply; recipients save a reviewed incoming handshake plus confirmed reply without a reverse invitation. Mailbox and echo checks apply to both.
 3. Participants without a handshake cannot join a task record.
 4. Discussion cannot reserve WORK/RESULT; READY requires local execution authorization.
 5. Local READY may precede peer READY; execution requires matching READY from every required participant.
@@ -45,21 +45,23 @@ Setup discovers email tools and account access instead of asking users to identi
 
 Initiators and recipients need their own owners' discussion authorization. They may clarify the task over multiple rounds. Task and permission approval can be combined, and clear existing authorization is reused. Only additional scope needs additional approval; host-enforced prompts cannot be bypassed.
 
-Contacts live outside the skill installation. A historical contact is not permission to execute a new task. Task-local waiting does not create a persistent service, cross-session automation, or offline wakeup. Retrospectives and thanks do not reopen a closed task.
+Contacts live outside the skill installation. A historical contact is not permission to execute a new task. Task-local waiting does not create a persistent service or offline wakeup by default. An explicitly authorized same-thread host automation may continue across turns; disclose its lifetime and enforce cleanup. Retrospectives and thanks do not reopen a closed task.
 
 ## Loop and thread checks
 
-Twelve additional offline tests cover two poll/process/reply cycles, mandatory reply dispositions, partial polling, uncertain sends, cycle overlap, scheduler IDs, revocation, deadline and budget stops, immediate local work, and canonical-thread failures. A provider thread mismatch is retained as a sent message and cannot be blindly retried. Polling tests also cover early host wakeups and slow message processing without adding another polling interval. Tests use synthetic scheduler IDs and do not establish actual host scheduling or peer consent.
+Loop regression tests cover two poll/process/reply cycles, mandatory reply dispositions, partial polling, uncertain sends, cycle overlap, scheduler IDs, revocation, deadline and budget stops, immediate local work, and canonical-thread failures. A provider thread mismatch is retained as a sent message and cannot be blindly retried. Polling tests also cover early host wakeups and slow message processing without adding another polling interval. Tests use synthetic scheduler IDs and do not establish actual host scheduling or peer consent.
 
 Live feedback also exposed a split peer thread and a claim that the peer required manual turn triggers. The local side recovered the mail by task ID and asked the peer to inspect actual session-loop tools. Shared mailbox agents remain separate participants. The loop controller and scheduler registration must be observed on each real host before calling unattended collaboration successful.
 
+See [the complete workflow audit](WORKFLOW_AUDIT.md) for the subsequent documentation and helper fixes. The two-role regression now exercises one outbound introduction, recipient acceptance, independent READY messages, work/result exchange and coordinator-only closure. New tests cover first-message thread creation and permission refresh without suppressing authorized discussion.
+
 ## Verification limits
 
-The round-two invitation was sent using the packaged skill; the bilateral handshake and live two-host acceptance have not been confirmed. The owner reported that two installing agents stopped after installation without entering identity setup or a handshake. This exposed a missing installation-to-setup transition. The entry point, install-and-setup prompts, and bare invocation now route to explicit first-use setup. This change has not yet been verified in those two remote sessions.
+The round-two invitation received a peer HELLO, and the local side recorded the contact and replied. One local scheduled invocation was observed completing a check. Matching execution READY, the peer's actual scheduler operation and live two-host acceptance remain unconfirmed. The owner reported that two installing agents stopped after installation without entering identity setup or a handshake. This exposed a missing installation-to-setup transition. The entry point, install-and-setup prompts, and bare invocation now route to explicit first-use setup. This change has not yet been verified in those two remote sessions.
 
 Offline tests do not access connectors, create real identities/contacts, or send mail. They establish helper behavior, not guaranteed model compliance. Instructions avoid Codex-specific tool names, but the destination platform must provide email access and task-local waiting. The helper requires Python 3.9 or later; missing dependencies are reported rather than installed automatically.
 
-For the next owner-authorized installation check, observe both initiator and recipient behavior: install-and-setup should reach capability inspection and missing identity/contact questions in the current conversation; a disconnected account should reach a real connection entry point or a specific blocker; an invitation recipient should reply to the existing handshake after local consent; repeated invocation should preserve the same agent identity and avoid duplicate mail. Installation-only must not send mail. A second agent sharing a mailbox must use its own identity. Record actual outcomes rather than marking these scenarios passed from a document review.
+For the next owner-authorized installation check, observe both initiator and recipient behavior: install-and-setup should reach capability inspection and missing identity/contact questions in the current conversation; a disconnected account should reach a real connection entry point or a specific blocker; an invitation recipient should reply to the existing handshake after local consent; repeated invocation should preserve the same agent identity and avoid duplicate mail. An explicit files-only installation request must not send mail. A second agent sharing a mailbox must use its own identity. Record actual outcomes rather than marking these scenarios passed from a document review.
 
 The helper cannot authenticate human approval, sandbox tool use, or prevent bypassing its checks. Deduplication and locks cover instances sharing one state directory, not independent cross-host copies. It does not promise exactly-once execution across those copies.
 

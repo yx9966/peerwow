@@ -45,14 +45,14 @@ Store grants for directed agent pairs. An email address is a contact channel, no
 | Level | Meaning |
 | --- | --- |
 | blocked | Accept no new tasks, execute nothing, and send no automatic mail. Read-only history review, recording revocation, and reconciling uncertain sends remain possible. |
-| discuss (default) | Introduce identities and clarify requirements/permissions within existing contact authorization. This does not authorize code execution, business-data sharing, or file modification. |
+| discuss (default) | Introduce identities and clarify requirements/permissions within existing contact authorization. This permits minimum private PeerWow bookkeeping, but does not authorize task code execution, business-data sharing, or task/business file modification. |
 | scoped | Accept tasks within an explicitly stated collaboration scope. Execution still requires task authorization. The scope may permit only static review, with no code execution. |
 
 Each grant includes an increasing revision, level, allowed, denied, expires_at, and local source evidence. Specify actions and resource boundaries: for example, receive synthetic data, run standard-library tests in this task's temporary directory, and return a summary. Explicit denials might prohibit business-directory reads, dependency installation, and production access. Denials take precedence. Do not infer permission for unlisted actions. A null expiry keeps the contact ceiling valid; it does not authorize indefinite autonomous work.
 
 Describe current grants in HELLO and restate your understanding on receipt. Mark unknown peer scope as unconfirmed, not approved. Communicate changes through HELLO before a task, or TASK/BLOCKED during one. Share grantor_agent, grantee_agent, revision, level, allowed, denied, and expires_at. Do not send local evidence, unrelated contacts, or internal approval records. A sender may declare only their own side's grant, not increase the recipient's permissions.
 
-READY acknowledges both grant revisions as well as task authorization. If A sends B `{"local":2,"peer":5}`, A has granted revision 2 to B and B has granted revision 5 to A. B's reply uses `{"local":5,"peer":2}`. Compare the full recorded scopes, not just numbers. In a multi-party task, exchange only relevant relationships; each participant confirms the agents with whom they need to collaborate.
+READY acknowledges both grant revisions as well as task authorization. If A sends B `{"local":2,"peer":5}`, A has granted revision 2 to B and B has granted revision 5 to A. B's reply uses `{"local":5,"peer":2}`. Compare the full recorded scopes, not just numbers. For a multi-party task, the current helper requires confirmed contacts and grants between every pair of listed participants. Exchange only those task-relevant relationships, not unrelated address-book entries.
 
 Do not overwrite a grant with a duplicate revision. Clarify different content under the same revision; reject rollback to an older one. A new revision invalidates old READY confirmations. Resume execution after the relevant changes are acknowledged. Matching versions without expanded scope does not require repeat human approval. Expanded scope needs evidence from the granting owner and updated task authorization where affected.
 
@@ -60,7 +60,9 @@ Local revocation takes effect without waiting for the peer. If blocked prohibits
 
 ## Shared task statement and READY
 
-Keep a short task statement covering objectives, agent roles, deliverables, acceptance, shareable materials, each side's operations, coordinator, and message/waiting budgets. Preserve the exact text, normalize line endings to LF, and calculate SHA256 over the agreed UTF-8 text. READY cites its revision and hash. Alternatively hash the original bytes of an agreed task attachment, but specify which convention is used.
+Keep a short task statement covering objectives, agent roles, deliverables, acceptance, shareable materials, each side's operations, coordinator, and message/waiting budgets. Preserve the exact text, normalize line endings to LF, and calculate SHA256 over the agreed UTF-8 text. READY cites its revision and hash. When using the state helper, place the exact shared statement in `agreement` and use its returned hash. An attachment may accompany that statement, with its original-byte hash recorded separately; do not substitute an attachment hash for the helper's agreement hash.
+
+Exchange directional grant summaries in TASK before READY; neither side must already be READY to discuss grants. Once the contract, local approval and bilateral scopes are recorded, each side sends its own READY independently. Wait for all matching confirmations only before execution.
 
 READY states actual local capabilities and the scope approved by the local owner. If execution is not permitted, state that work is limited to static review. The initiator collects all required participants' READY confirmations; recipients also check that responsibilities do not exceed their own permissions. Clarify conflicting hashes or requests to act before approval; do not execute early.
 
@@ -79,6 +81,7 @@ Report the tested version, expected and actual results, failures, execution loca
 - Duplicate logical message: read its existing processing record; do not execute or reply twice.
 - Delayed old-revision result: retain it as evidence without replacing the current conclusion.
 - Uncertain delivery: check Sent using the logical ID and preserve uncertainty. A temporarily missing search result is not grounds to resend.
-- Changed scope or missing permission: describe the specific gap in BLOCKED and consult the local owner. Refresh the revision and READY after authorization; do not reapprove unchanged scope.
+- Changed scope or missing permission: describe the specific gap in BLOCKED when discussion permission and budget allow sending, and consult the local owner only for missing local scope. Continue other already-authorized discussion or work unaffected by the gap. Refresh the revision and READY after authorization; do not reapprove unchanged scope.
+- Closure: only the coordinator sends CLOSE. Other participants record it, stop their loop and do not echo CLOSE.
 - Thanks, retrospectives, or old mail after closure: do not restart work or create acknowledgment loops.
-- Session exit, timeout, or exhausted budget: record the state and report remaining work to the owner. Do not invent completion or start a new task.
+- Session exit without an authorized continuing host driver, timeout, or exhausted budget: record the state and report remaining work to the owner. An authorized continuing driver retains its original limits. Do not invent completion or start a new task.

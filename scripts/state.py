@@ -81,8 +81,7 @@ def loop_action(state, task, now):
     if task.get("thread_conflict"):
         return dict(action="stop", reason="Resolve thread conflict without resending delivered mail")
     try:
-        check_trust(state, task, [p for p in task["participants"] if p != task["agent_id"]],
-                    now, task["phase"] == "execute")
+        check_trust(state, task, [p for p in task["participants"] if p != task["agent_id"]], now)
     except ValueError as exc:
         return dict(action="stop", reason=str(exc))
     pending = [mid for mid, msg in task["outbox"].items() if msg["status"] == "prepared"]
@@ -90,6 +89,13 @@ def loop_action(state, task, now):
         return dict(action="reconcile_send", message_ids=pending)
     if sum(m["status"] != "not_sent" for m in task["outbox"].values()) >= task["max_outgoing"]:
         return dict(action="stop", reason="Outgoing budget exhausted")
+    if task["phase"] == "execute":
+        try:
+            check_trust(state, task, [p for p in task["participants"] if p != task["agent_id"]], now, True)
+        except ValueError as exc:
+            if loop.get("cycle"):
+                return dict(action="busy", reason="Reconcile the existing cycle before refreshing READY")
+            return dict(action="refresh_ready", reason=str(exc))
     if loop.get("cycle"):
         return dict(action="busy", reason="Unfinished cycle; reconcile its work before releasing its token")
     pending = [mid for mid, msg in task["inbox"].items() if msg["status"] == "processing"]
@@ -144,6 +150,31 @@ def apply(state, action, data, now):
             contact[side + "_trust"] = trust_record(old or {}, side)
         state["contacts"][key] = contact
         h["status"] = "confirmed"
+        return contact
+    if action == "handshake-accept":
+        # Receiver path: the original challenge plus a confirmed reply completes
+        # the local record without forcing a second, reverse invitation.
+        require(ident(data.get("handshake_id")) and data.get("echo") == data["handshake_id"], "Original handshake and exact reply echo required")
+        address = email(data.get("from_email"))
+        require(address == email(data.get("expected_email")), "Handshake sender must match the owner-approved mailbox")
+        peer = data.get("peer_agent_id")
+        require(ident(peer) and peer != agent_id, "Distinct peer identity required")
+        require(all(text(data.get(k)) for k in ("peer_name", "owner", "mail_id", "reply_mail_id", "evidence")),
+                "Peer identity, incoming source, confirmed sent reply and local consent evidence required")
+        require(type(data.get("nickname", "")) is str, "Nickname must be text")
+        key = agent_id + ":" + peer
+        old = state["contacts"].get(key)
+        require(old is None or old["email"] == address, "Contact mailbox changed: reconcile with owner, do not overwrite")
+        if old and old.get("handshake_id") == data["handshake_id"]:
+            require(old["mail_id"] == data["mail_id"] and old.get("reply_mail_id") == data["reply_mail_id"],
+                    "Conflicting evidence for an already accepted handshake")
+            return old
+        contact = dict(agent_id=peer, name=data["peer_name"], owner=data["owner"], nickname=data.get("nickname", ""),
+                       email=address, handshake_id=data["handshake_id"], mail_id=data["mail_id"],
+                       reply_mail_id=data["reply_mail_id"], evidence=data["evidence"], confirmed=now)
+        for side in ("local", "peer"):
+            contact[side + "_trust"] = trust_record(old or {}, side)
+        state["contacts"][key] = contact
         return contact
     if action == "contact-trust":
         peer, side = data.get("peer_agent_id"), data.get("side")
@@ -265,9 +296,11 @@ def apply(state, action, data, now):
         if result["action"] == "stop":
             task["loop"].update(status="stopped", reason=result["reason"])
             result.update(scheduler_id=task["loop"].get("scheduler_id"), cleanup="Cancel or pause the host scheduler")
-        if result["action"] in ("poll", "work"):
+        if result["action"] == "refresh_ready":
+            task["phase"] = "discuss"
+        if result["action"] in ("poll", "work", "refresh_ready"):
             token = new_id("cycle-")
-            task["loop"]["cycle"] = dict(token=token, action=result["action"], started=now)
+            task["loop"]["cycle"] = dict(token=token, action="work" if result["action"] == "refresh_ready" else result["action"], started=now)
             result["cycle"] = token
         return result
     if action == "loop-checkpoint":
@@ -299,9 +332,13 @@ def apply(state, action, data, now):
         require(data.get("outcome") in ("sent", "not_sent") and text(data.get("evidence")), "Definite delivery outcome and evidence required")
         if data["outcome"] == "sent":
             require(text(data.get("mail_id")), "Provider sent-message ID required")
-            if m.get("expected_thread_id"):
+            if m.get("expected_thread_id") or m.get("new_thread"):
                 require(text(data.get("thread_id")), "Provider thread ID required to verify actual reply")
         m.update(status=data["outcome"], evidence=data["evidence"], mail_id=data.get("mail_id"), resolved=now)
+        if data["outcome"] == "sent" and m.get("new_thread"):
+            task["thread"] = dict(thread_id=data["thread_id"], reply_message_id=data["mail_id"],
+                                  subject=m["subject"], evidence=data["evidence"])
+            m.update(thread_id=data["thread_id"], thread_verified=True)
         if data["outcome"] == "sent" and m.get("expected_thread_id"):
             m["thread_id"] = data["thread_id"]
             m["thread_verified"] = data["thread_id"] == m["expected_thread_id"]
@@ -340,6 +377,8 @@ def apply(state, action, data, now):
         require(type(recipients) is list and agent_id in recipients and all(p in task["participants"] for p in recipients), "Message not addressed to this Agent or has unknown recipients")
         require(type(data.get("revision")) is int and data["revision"] == task["revision"] and text(data.get("mail_id")) and type(data.get("body")) is str, "Stale revision or missing message source/body")
         require(data.get("kind") in ("TASK", "READY", "WORK", "RESULT", "BLOCKED", "CLOSE"), "Invalid message kind")
+        if data.get("kind") == "CLOSE":
+            require(sender == task["coordinator"], "Only the coordinator can close the shared task")
         if data.get("kind") in ("WORK", "RESULT"):
             require(task["phase"] == "execute", "Execution messages require execution phase")
         check_trust(state, task, [sender], now, data.get("kind") in ("WORK", "RESULT"))
@@ -353,14 +392,28 @@ def apply(state, action, data, now):
         task["inbox"][mid] = m
         return dict(message_id=mid, duplicate=False, **m)
     if action == "outbox-prepare":
-        require("thread" in task, "Bind the canonical provider thread and actual reply anchor before sending")
-        require(text(task["thread"].get("subject")), "Bind the original subject before replying to this legacy task")
-        require("subject" not in data or data["subject"] == task["thread"]["subject"], "Reply subject must match the canonical task subject")
+        first = data.get("new_thread") is True
+        if first:
+            require("thread" not in task and not any(m["status"] != "not_sent" for m in task["outbox"].values()),
+                    "A new thread is allowed only for an unsent task invitation")
+            require(data.get("kind") == "TASK" and task["phase"] == "discuss", "Only a first discussion invitation can create a thread")
+            subject = data.get("subject")
+            require(text(subject) and subject.startswith('[PeerWow][' + task['task_id'] + '] ')
+                    and ' <-> ' in subject and ' | ' in subject and not any(c in subject for c in ('\r', '\n')),
+                    "New task subject must include PeerWow, exact task ID, both owner/agent labels and task title")
+            binding = dict(subject=subject, reply_message_id=None, thread_id=None)
+        else:
+            require("thread" in task, "Bind the canonical provider thread and actual reply anchor before sending")
+            require(text(task["thread"].get("subject")), "Bind the original subject before replying to this legacy task")
+            require("subject" not in data or data["subject"] == task["thread"]["subject"], "Reply subject must match the canonical task subject")
+            binding = task["thread"]
         recipients = data.get("to_agents")
         require(type(recipients) is list and recipients and len(set(recipients)) == len(recipients)
                 and all(p in task["participants"] and p != agent_id for p in recipients), "Explicit task recipients required")
         require(data.get("kind") in ("TASK", "READY", "WORK", "RESULT", "BLOCKED", "CLOSE"), "Invalid message kind")
         require(text(data.get("body")), "Outgoing body required")
+        if data["kind"] == "CLOSE":
+            require(agent_id == task["coordinator"], "Only the coordinator sends task CLOSE; recipients close locally without an echo")
         if data["kind"] in ("WORK", "RESULT"):
             require(task["phase"] == "execute", "Execution messages require execution phase")
         if data["kind"] == "READY":
@@ -376,8 +429,8 @@ def apply(state, action, data, now):
         mid = new_id("msg-")
         m = dict(status="prepared", created=now, kind=data["kind"], to_agents=recipients,
                  body=data["body"], attachments=attachments, revision=task["revision"],
-                 reply_message_id=task["thread"]["reply_message_id"], expected_thread_id=task["thread"]["thread_id"],
-                 subject=task["thread"]["subject"])
+                 reply_message_id=binding["reply_message_id"], expected_thread_id=binding["thread_id"],
+                 subject=binding["subject"], new_thread=first)
         task["outbox"][mid] = m
         return dict(message_id=mid, **m)
     raise ValueError("Unknown action")
@@ -392,7 +445,7 @@ def secure_file(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["show", "identity-add", "handshake-start", "handshake-finish", "contact-trust", "task-put", "task-check",
+    parser.add_argument("action", choices=["show", "identity-add", "handshake-start", "handshake-finish", "handshake-accept", "contact-trust", "task-put", "task-check",
                                            "inbox-claim", "inbox-done", "outbox-prepare", "outbox-resolve",
                                            "loop-start", "loop-next", "loop-checkpoint", "loop-stop", "task-thread"])
     parser.add_argument("--root", default=os.environ.get("PEERWOW_HOME", "~/.local/share/peerwow"))

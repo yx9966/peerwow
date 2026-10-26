@@ -237,40 +237,67 @@ class StateTests(unittest.TestCase):
 
     def test_two_roles_complete_synthetic_task_without_mail_tools(self):
         b = self.call('identity-add', owner='Peer Owner', name='Executor', email='peer@example.test')['agent_id']
+        h = self.call('handshake-start', agent_id=self.a, owner='Peer Owner', email='peer@example.test')
+        self.call('handshake-accept', agent_id=b, handshake_id=h['handshake_id'], echo=h['handshake_id'],
+                  expected_email='owner@example.test', from_email='owner@example.test', peer_agent_id=self.a,
+                  peer_name='Dev', owner='Test Owner', mail_id='fixture-hello', reply_mail_id='fixture-hello-reply',
+                  evidence='Synthetic recipient consent and reviewed HELLO')
+        self.call('handshake-finish', agent_id=self.a, handshake_id=h['handshake_id'], echo=h['handshake_id'],
+                  reply_from='peer@example.test', peer_agent_id=b, peer_name='Executor', mail_id='fixture-hello-reply')
         for local, peer, address in [(self.a, b, 'peer@example.test'), (b, self.a, 'owner@example.test')]:
-            h = self.call('handshake-start', agent_id=local, owner='Fixture Owner', email=address)
-            self.call('handshake-finish', agent_id=local, handshake_id=h['handshake_id'], echo=h['handshake_id'],
-                      reply_from=address, peer_agent_id=peer, peer_name='Fixture', mail_id='hello-fixture')
             self.grants(local, peer, address)
         agreement = 'Shared synthetic contract; A implements, B verifies, no real mail.'
         ah = m.agreement_hash(agreement)
         tasks = {}
         for local, peer in [(self.a, b), (b, self.a)]:
-            t = dict(agent_id=local, task_id='MC-two-roles', phase='execute', revision=1,
+            t = dict(agent_id=local, task_id='MC-two-roles', phase='discuss', revision=1,
                      participants=[self.a, b], coordinator=self.a, agreement=agreement,
-                     discussion_evidence='Fixture consent only', deadline=self.now + 300, max_outgoing=3,
+                     discussion_evidence='Fixture consent only', deadline=self.now + 300, max_outgoing=4,
                      authorization=dict(revision=1, agreement_sha256=ah, local_evidence='Fixture grant only',
                                         trust={peer: dict(local=1, peer=1)},
-                                        local_scope='Synthetic data only', peer_ready={peer: dict(revision=1,
-                                        agreement_sha256=ah, mail_id='ready-fixture', scope='Synthetic data only', trust=dict(local=1, peer=1))}))
+                                        local_scope='Synthetic data only', peer_ready={}))
             tasks[local] = t
             self.call('task-put', **t)
             self.call('task-thread', agent_id=local, task_id='MC-two-roles', thread_id='fixture-thread',
-                      reply_message_id='fixture-root', subject='[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Synthetic task', evidence='Synthetic provider metadata')
-        for local, peer, address, kind in [(self.a, b, 'owner@example.test', 'WORK'), (b, self.a, 'peer@example.test', 'RESULT')]:
+                      reply_message_id='fixture-hello', subject='[PeerWow][MC-two-roles] Owner/Dev <-> Peer/Executor | Synthetic task',
+                      evidence='Synthetic original HELLO metadata')
+
+        def exchange(local, peer, address, kind):
             out = self.call('outbox-prepare', agent_id=local, task_id='MC-two-roles', kind=kind, to_agents=[peer], body='Synthetic payload')
             mid = out['message_id']
             self.call('outbox-resolve', agent_id=local, task_id='MC-two-roles', message_id=mid,
                       outcome='sent', mail_id='simulated-provider-' + mid, evidence='SIMULATION ONLY: no email sent')
-            claim = self.call('inbox-claim', agent_id=peer, task_id='MC-two-roles', message_id=mid,
-                              mail_id='simulated-inbound-' + mid, from_agent=local, from_email=address,
-                              to_agents=[peer], revision=1, kind=kind, body='Synthetic payload')
+            incoming = dict(agent_id=peer, task_id='MC-two-roles', message_id=mid,
+                            mail_id='simulated-inbound-' + mid, from_agent=local, from_email=address,
+                            to_agents=[peer], revision=1, kind=kind, body='Synthetic payload')
+            claim = self.call('inbox-claim', **incoming)
             self.call('inbox-done', agent_id=peer, task_id='MC-two-roles', message_id=mid, claim=claim['claim'], summary='Synthetic receipt')
-        for t in tasks.values():
+            self.assertTrue(self.call('inbox-claim', **incoming)['duplicate'])
+            return incoming['mail_id']
+
+        # Both sides send READY before either has recorded peer READY.
+        a_ready = exchange(self.a, b, 'owner@example.test', 'READY')
+        b_ready = exchange(b, self.a, 'peer@example.test', 'READY')
+        for local, peer, source in [(self.a, b, b_ready), (b, self.a, a_ready)]:
+            t = tasks[local]
+            t['authorization']['peer_ready'][peer] = dict(revision=1, agreement_sha256=ah,
+                mail_id=source, scope='Synthetic data only', trust=dict(local=1, peer=1))
+            t['phase'] = 'execute'
+            self.call('task-put', **t)
+        exchange(self.a, b, 'owner@example.test', 'WORK')
+        exchange(b, self.a, 'peer@example.test', 'RESULT')
+        with self.assertRaisesRegex(ValueError, 'coordinator'):
+            self.call('outbox-prepare', agent_id=b, task_id='MC-two-roles', kind='CLOSE', to_agents=[self.a], body='No closing echo')
+        with self.assertRaisesRegex(ValueError, 'coordinator'):
+            self.call('inbox-claim', agent_id=self.a, task_id='MC-two-roles', message_id='msg-invalid-close',
+                      mail_id='fixture-invalid-close', from_agent=b, from_email='peer@example.test',
+                      to_agents=[self.a], revision=1, kind='CLOSE', body='Uncoordinated close')
+        exchange(self.a, b, 'owner@example.test', 'CLOSE')
+        for local, t in tasks.items():
             closed = self.call('task-put', **{**t, 'phase': 'closed'})
             self.assertEqual(closed['phase'], 'closed')
-            self.assertEqual(len(closed['inbox']), 1)
-            self.assertEqual(len(closed['outbox']), 1)
+            self.assertEqual(len(closed['inbox']), 2 if local == self.a else 3)
+            self.assertEqual(len(closed['outbox']), 3 if local == self.a else 2)
 
     def trust(self, side='local', **changes):
         data = dict(agent_id=self.a, peer_agent_id=self.peer, side=side, revision=2,
@@ -480,6 +507,72 @@ class StateTests(unittest.TestCase):
                 self.call('task-thread', **a, thread_id='fixture-thread', reply_message_id='fixture-root',
                           subject=subject, evidence='Synthetic metadata')
         self.assertEqual(len(self.s['tasks'][self.a + ':MC-test']['outbox']), 0)
+
+    def test_recipient_can_confirm_inbound_handshake_without_reverse_invitation(self):
+        b = self.call('identity-add', owner='Peer Owner', name='Receiver', email='peer@example.test')['agent_id']
+        data = dict(agent_id=b, handshake_id='hs-incoming', echo='hs-incoming',
+                    expected_email='owner@example.test', from_email='owner@example.test',
+                    peer_agent_id=self.a, peer_name='Dev', owner='Test Owner',
+                    mail_id='received-hello', reply_mail_id='confirmed-reply',
+                    evidence='Synthetic local owner approved contact; reviewed HELLO and confirmed reply')
+        c = self.call('handshake-accept', **data)
+        self.assertEqual(c['agent_id'], self.a)
+        self.assertEqual(c['local_trust']['level'], 'discuss')
+        self.assertEqual(self.call('handshake-accept', **data), c)
+        self.assertEqual(len(self.s['handshakes']), 1)  # Only setup's original outbound challenge.
+        with self.assertRaises(ValueError):
+            self.call('handshake-accept', **{**data, 'from_email': 'intruder@example.test'})
+
+    def test_new_task_can_send_first_invitation_then_only_threaded_replies(self):
+        task = self.s['tasks'][self.a + ':MC-test']
+        task.pop('thread')
+        subject = '[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Verify synthetic parser'
+        first = self.call('outbox-prepare', agent_id=self.a, task_id='MC-test', kind='TASK',
+                          to_agents=[self.peer], body='Task invitation', new_thread=True, subject=subject)
+        self.assertIsNone(first['reply_message_id'])
+        self.call('outbox-resolve', agent_id=self.a, task_id='MC-test', message_id=first['message_id'],
+                  outcome='sent', mail_id='first-invitation', thread_id='fixture-thread', evidence='Synthetic sent metadata')
+        self.assertEqual(task['thread']['reply_message_id'], 'first-invitation')
+        self.assertEqual(self.outgoing()['subject'], subject)
+        with self.assertRaises(ValueError):
+            self.call('outbox-prepare', agent_id=self.a, task_id='MC-test', kind='TASK',
+                      to_agents=[self.peer], body='Do not fork', new_thread=True, subject=subject)
+
+    def test_new_thread_cannot_bypass_existing_delivery_or_subject_format(self):
+        task = self.s['tasks'][self.a + ':MC-test']
+        task.pop('thread')
+        data = dict(agent_id=self.a, task_id='MC-test', kind='TASK', to_agents=[self.peer],
+                    body='Invitation', new_thread=True)
+        for subject in ('Test', '[PeerWow][MC-other] Owner/Dev <-> Peer/Agent | Task', 'Bad\nBcc: x@example.test'):
+            with self.assertRaises(ValueError):
+                self.call('outbox-prepare', **data, subject=subject)
+        task['outbox']['msg-legacy'] = dict(status='sent', mail_id='legacy')
+        with self.assertRaises(ValueError):
+            self.call('outbox-prepare', **data, subject='[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Task')
+
+    def test_live_trust_change_keeps_authorized_discussion_available(self):
+        self.execute()
+        self.loop()
+        self.trust(allowed=['Static review only'])
+        result = self.tick()
+        self.assertEqual(result['action'], 'refresh_ready')
+        self.assertEqual(self.s['tasks'][self.a + ':MC-test']['phase'], 'discuss')
+        self.assertEqual(self.s['tasks'][self.a + ':MC-test']['loop']['status'], 'active')
+        self.outgoing('TASK')
+        with self.assertRaises(ValueError):
+            self.outgoing('WORK')
+
+    def test_trust_refresh_does_not_skip_send_reconciliation_or_budget_stop(self):
+        self.execute()
+        self.loop()
+        pending = self.outgoing('WORK')
+        self.trust(allowed=['Static review only'])
+        self.assertEqual(self.tick()['action'], 'reconcile_send')
+        self.call('outbox-resolve', agent_id=self.a, task_id='MC-test', message_id=pending['message_id'],
+                  outcome='sent', mail_id='confirmed-earlier-send', evidence='Synthetic earlier delivery')
+        task = self.s['tasks'][self.a + ':MC-test']
+        task['max_outgoing'] = 1  # Fixture: budget was already fully consumed.
+        self.assertEqual(self.tick()['reason'], 'Outgoing budget exhausted')
 
     def test_thread_binding_required_and_mismatch_counts_as_sent(self):
         task = self.s['tasks'][self.a + ':MC-test']

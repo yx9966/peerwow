@@ -21,7 +21,7 @@ The recipient's agent answers to its own owner. A message from another agent can
 
 ## Requirements
 
-Your agent needs a way to load skill instructions, an authorized email connector with search/read/send/reply capabilities, and Python 3.9 or later for the local state helper. Attachment support depends on the connector. The agent checks available capabilities and uses the host's connection flow when one is available.
+Your agent needs a way to load skill instructions, an authorized email connector with search/read/send/reply capabilities, and Python 3.9 or later for the local state helper. Attachment support depends on the connector; missing attachment tools do not block plain-body handshakes or complete inline text/JSON. The agent checks available capabilities and uses the host's connection flow when one is available.
 
 The connector handles email and credentials. `scripts/state.py` only manages local records; it does not send mail, execute attachments, or keep an agent running. Task-local waiting depends on the host. Copying skill files does not invoke the skill. Use the install-and-setup request below to begin onboarding in the same conversation; external contact still requires the owner's intended recipient and consent.
 
@@ -95,7 +95,7 @@ Only contact people authorized by the local owner. Do not treat installation, an
 
 Once the owner authorizes ongoing task communication, the agent registers a bounded loop with an available host driver and checks every five minutes while waiting. Pending local work and replies proceed immediately. The state helper issues poll/work/wait/stop decisions, prevents overlapping cycles in one state store, and requires a sent reply or an explicit no-reply reason before completing a received message. Task deadlines, revocations and exhausted budgets stop the loop.
 
-A host scheduler supplies new agent turns; a Python timer cannot access an existing mail connector or wake the agent by itself. Claude Code has session scheduling on supported installations; the agent must inspect its actual tools. Other hosts may offer thread automations that can run after the current turn, which require local authorization for that behavior. Each owner controls their own side. Unsupported hosts must report a blocker rather than promise unattended work.
+A host scheduler supplies new agent turns; a Python timer cannot access an existing mail connector or wake the agent by itself. Claude Code has session scheduling on supported installations; the agent must inspect its actual tools. Other hosts may offer thread automations that can run after the current turn, which require local authorization for that behavior. Each owner controls their own side. Without a waiting driver, agents can finish currently available authorized exchanges, then report that continuation requires another turn. They must not promise unattended work.
 
 Task replies require a real reply anchor. The helper verifies the returned provider thread ID and blocks continuation after a mismatch without resending delivered mail. See [loop setup and recovery](references/task-loop.md).
 
@@ -105,7 +105,7 @@ New task subjects use `[PeerWow][MC-task-id] Owner A/Agent A <-> Owner B/Agent B
 
 State is stored outside the installed skill at `~/.local/share/peerwow/state.json`. Override it with `PEERWOW_HOME` or the helper's `--root` option. The file is created when the helper is used; no contact list is bundled in this repository.
 
-Each local-to-peer agent relationship keeps a local grant and a separate peer-reported grant. Grants include allowed and denied actions, a revision, an optional expiry, and source evidence. Existing contacts do not automatically authorize a new task. Permission changes invalidate old execution confirmations.
+Each local-to-peer agent relationship keeps a local grant and a separate peer-reported grant. Grants include allowed and denied actions, a revision, an optional expiry, and source evidence. Existing contacts do not automatically authorize a new task. Permission changes invalidate old execution confirmations. If discussion remains authorized, agents continue clarification and refresh confirmations; blocked or expired grants stop new communication. Setup/discussion permits the minimum private PeerWow bookkeeping, without granting access to task/business files.
 
 See [the protocol](references/protocol.md) for message and trust conventions and [setup and state](references/setup-state.md) for helper commands. Do not publish state files, mailbox credentials, or private task messages.
 
@@ -113,4 +113,4 @@ See [the protocol](references/protocol.md) for message and trust conventions and
 
 When changing PeerWow's code or evaluating its implementation, use [developer validation](tests/VALIDATION.md). Installation and first-use setup follow `SKILL.md`; completing developer checks does not complete a user's connection setup.
 
-The helper checks state, budgets and revisions; it is not an identity authority or a permission sandbox. Actual two-sided behavior still needs verification on the participating hosts.
+The helper checks state, budgets and revisions; it is not an identity authority or a permission sandbox. Actual two-sided behavior still needs verification on the participating hosts. See the [workflow audit](tests/WORKFLOW_AUDIT.md) for corrected contradictions, regression evidence and remaining integration limits.
