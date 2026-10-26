@@ -113,7 +113,7 @@ Run the offline test suite from the repository root:
 python3 -m unittest discover -s tests -v
 ```
 
-The 36 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
+The 37 tests use synthetic identities and temporary state. They do not access email, send messages, or require an installed copy of the skill. See [validation scope](tests/VALIDATION.md).
 
 An earlier manual email collaboration informed this design. The packaged skill, including its contact trust workflow, has not yet completed a live two-host acceptance test. Local tests do not establish that every agent will follow the instructions.
 

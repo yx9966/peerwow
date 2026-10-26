@@ -18,7 +18,7 @@ Before creating a job, inspect task state and existing jobs for this task/agent.
 
 All commands use `state.py` with JSON input, as described in [setup-state.md](setup-state.md). These examples are illustrative; use real local IDs and evidence.
 
-- `task-thread`: bind `agent_id`, `task_id`, `thread_id`, `reply_message_id`, and `evidence` from actual original-message metadata. These provider IDs are local to this mailbox. Do not copy another participant's Gmail thread ID.
+- `task-thread`: bind `agent_id`, `task_id`, `thread_id`, `reply_message_id`, `subject`, and `evidence` from actual original-message metadata. Store the original subject, not a newly composed title. These provider IDs are local to this mailbox. Do not copy another participant's Gmail thread ID. Legacy bindings without a subject must be completed before sending.
 - `loop-start`: provide `agent_id`, `task_id`, `driver` (`native` or `foreground`), `interval_seconds:300`, and actual local authorization `evidence`. Native mode also requires the actual `scheduler_id`. It cannot schedule anything by itself. An existing active loop blocks duplicate registration.
 - `loop-next`: provide `agent_id` and `task_id`. It returns one of the actions below. A poll/work cycle is atomically assigned a token; a second caller receives `busy` rather than repeating it.
 - `loop-checkpoint`: provide the returned `cycle`, `next_action` (`wait`, `work`, or `blocked`), and a `summary` naming the next actor. After a poll also provide `poll_complete:true`, only once all search pages and relevant messages have been handled. `wait` is rejected while messages remain processing or sends are uncertain. `work` continues immediately. `blocked` stops the loop and preserves unfinished effects for recovery.
@@ -48,7 +48,7 @@ Configure the real host job for the approved interval. Do not claim it ran succe
 
 ## Canonical email thread
 
-Before each task reply, `outbox-prepare` requires the local canonical thread binding and returns `reply_message_id` and `expected_thread_id`. Pass that exact reply anchor to the connector's real reply API. A hand-written `Re:` is insufficient. If the connector only supports raw MIME, it must support actual `In-Reply-To` and `References` headers from message metadata. If neither path exists, stop sending and report the capability gap; do not silently open a fresh thread.
+Before each task reply, `outbox-prepare` requires the local canonical thread binding and returns `reply_message_id`, `expected_thread_id`, and the fixed `subject`. Pass that reply anchor and subject to the connector's real reply API, or let it inherit the subject when supported. Do not compose another subject. A hand-written `Re:` is insufficient. If the connector only supports raw MIME, it must support actual `In-Reply-To` and `References` headers from message metadata. If neither path exists, stop sending and report the capability gap; do not silently open a fresh thread.
 
 After delivery, `outbox-resolve` requires the actual provider `thread_id`. If the send response omits it, fetch sent-message metadata before resolving. A mismatch is saved as sent, consumes budget, flags `thread_conflict`, and stops the loop. Never resend the same body to repair the split. Inspect the anchor/tool arguments, bind the verified original thread again with `task-thread` and recovery evidence, then resume within unchanged permissions. Only an explicit owner-approved transport change can choose a different canonical thread.
 

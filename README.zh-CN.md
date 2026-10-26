@@ -111,7 +111,7 @@ Claude Code 个人安装路径依据其[官方 Skill 文档](https://code.claude
 python3 -m unittest discover -s tests -v
 ```
 
-36 项测试使用合成身份和临时状态，不访问邮箱、不发信，也不依赖本机已安装的 Skill。详见英文版[验证范围](tests/VALIDATION.md)。
+37 项测试使用合成身份和临时状态，不访问邮箱、不发信，也不依赖本机已安装的 Skill。详见英文版[验证范围](tests/VALIDATION.md)。
 
 此前的一轮人工发起邮件协作为本设计提供了依据。包含通讯录和双向授信的完整 Skill 尚未完成真实双端验收。本地测试不能证明所有 Agent 都会遵守指令。
 

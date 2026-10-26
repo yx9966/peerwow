@@ -229,10 +229,13 @@ def apply(state, action, data, now):
     require(old is not None, "Unknown task")
     task = old
     if action == "task-thread":
-        require(all(text(data.get(k)) for k in ("thread_id", "reply_message_id", "evidence")),
-                "Actual provider thread, reply anchor and source evidence required")
+        require(all(text(data.get(k)) for k in ("thread_id", "reply_message_id", "subject", "evidence")),
+                "Actual provider thread, reply anchor, original subject and source evidence required")
+        require(not any(c in data["subject"] for c in ("\r", "\n")), "Subject must be a single line")
         require(not any(x["status"] == "prepared" for x in task["outbox"].values()), "Reconcile pending send before changing thread")
-        task["thread"] = {k: data[k] for k in ("thread_id", "reply_message_id", "evidence")}
+        if "thread" in task and "subject" in task["thread"]:
+            require(data["subject"] == task["thread"]["subject"], "Keep the established task subject; do not rename a live thread")
+        task["thread"] = {k: data[k] for k in ("thread_id", "reply_message_id", "subject", "evidence")}
         task.pop("thread_conflict", None)
         return task["thread"]
     if action == "loop-stop":
@@ -347,6 +350,8 @@ def apply(state, action, data, now):
         return dict(message_id=mid, duplicate=False, **m)
     if action == "outbox-prepare":
         require("thread" in task, "Bind the canonical provider thread and actual reply anchor before sending")
+        require(text(task["thread"].get("subject")), "Bind the original subject before replying to this legacy task")
+        require("subject" not in data or data["subject"] == task["thread"]["subject"], "Reply subject must match the canonical task subject")
         recipients = data.get("to_agents")
         require(type(recipients) is list and recipients and len(set(recipients)) == len(recipients)
                 and all(p in task["participants"] and p != agent_id for p in recipients), "Explicit task recipients required")
@@ -367,7 +372,8 @@ def apply(state, action, data, now):
         mid = new_id("msg-")
         m = dict(status="prepared", created=now, kind=data["kind"], to_agents=recipients,
                  body=data["body"], attachments=attachments, revision=task["revision"],
-                 reply_message_id=task["thread"]["reply_message_id"], expected_thread_id=task["thread"]["thread_id"])
+                 reply_message_id=task["thread"]["reply_message_id"], expected_thread_id=task["thread"]["thread_id"],
+                 subject=task["thread"]["subject"])
         task["outbox"][mid] = m
         return dict(message_id=mid, **m)
     raise ValueError("Unknown action")

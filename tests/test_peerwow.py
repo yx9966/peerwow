@@ -30,7 +30,7 @@ class StateTests(unittest.TestCase):
                       max_outgoing=3, checkpoint='Discussing')
         self.call('task-put', **self.t)
         self.call('task-thread', agent_id=self.a, task_id='MC-test', thread_id='fixture-thread',
-                  reply_message_id='fixture-root', evidence='Synthetic provider metadata')
+                  reply_message_id='fixture-root', subject='[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Synthetic task', evidence='Synthetic provider metadata')
 
     def call(self, action, **data):
         if action == 'outbox-resolve' and data.get('outcome') == 'sent':
@@ -256,7 +256,7 @@ class StateTests(unittest.TestCase):
             tasks[local] = t
             self.call('task-put', **t)
             self.call('task-thread', agent_id=local, task_id='MC-two-roles', thread_id='fixture-thread',
-                      reply_message_id='fixture-root', evidence='Synthetic provider metadata')
+                      reply_message_id='fixture-root', subject='[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Synthetic task', evidence='Synthetic provider metadata')
         for local, peer, address, kind in [(self.a, b, 'owner@example.test', 'WORK'), (b, self.a, 'peer@example.test', 'RESULT')]:
             out = self.call('outbox-prepare', agent_id=local, task_id='MC-two-roles', kind=kind, to_agents=[peer], body='Synthetic payload')
             mid = out['message_id']
@@ -378,6 +378,7 @@ class StateTests(unittest.TestCase):
                 self.call('inbox-done', agent_id=self.a, task_id='MC-test', message_id=incoming['message_id'], claim=claim['claim'])
             sent = self.outgoing()
             self.assertEqual(sent['reply_message_id'], 'fixture-root')
+            self.assertEqual(sent['subject'], '[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Synthetic task')
             with self.assertRaisesRegex(ValueError, 'Confirmed reply'):
                 self.call('inbox-done', agent_id=self.a, task_id='MC-test', message_id=incoming['message_id'],
                           claim=claim['claim'], disposition='replied', reply_message_id=sent['message_id'])
@@ -450,13 +451,23 @@ class StateTests(unittest.TestCase):
         self.call('task-put', **{**self.t, 'checkpoint': 'Updated'})
         self.assertEqual(self.tick()['action'], 'poll')
 
+    def test_subject_cannot_drift_or_inject_headers(self):
+        a = dict(agent_id=self.a, task_id='MC-test')
+        with self.assertRaisesRegex(ValueError, 'canonical task subject'):
+            self.call('outbox-prepare', **a, kind='TASK', to_agents=[self.peer], body='Update', subject='New arbitrary title')
+        for subject in ('Changed established title', 'Header\nBcc: unrelated@example.test'):
+            with self.assertRaises(ValueError):
+                self.call('task-thread', **a, thread_id='fixture-thread', reply_message_id='fixture-root',
+                          subject=subject, evidence='Synthetic metadata')
+        self.assertEqual(len(self.s['tasks'][self.a + ':MC-test']['outbox']), 0)
+
     def test_thread_binding_required_and_mismatch_counts_as_sent(self):
         task = self.s['tasks'][self.a + ':MC-test']
         task.pop('thread')
         with self.assertRaisesRegex(ValueError, 'canonical'):
             self.outgoing()
         self.call('task-thread', agent_id=self.a, task_id='MC-test', thread_id='fixture-thread',
-                  reply_message_id='fixture-root', evidence='Original source metadata')
+                  reply_message_id='fixture-root', subject='[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Synthetic task', evidence='Original source metadata')
         self.loop()
         sent = self.outgoing()
         result = self.call('outbox-resolve', agent_id=self.a, task_id='MC-test', message_id=sent['message_id'],
@@ -467,7 +478,7 @@ class StateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'thread conflict'):
             self.outgoing()
         self.call('task-thread', agent_id=self.a, task_id='MC-test', thread_id='fixture-thread',
-                  reply_message_id='fixture-root', evidence='Original anchor rechecked; split mail retained, no resend')
+                  reply_message_id='fixture-root', subject='[PeerWow][MC-test] Owner/Dev <-> Peer/Agent | Synthetic task', evidence='Original anchor rechecked; split mail retained, no resend')
         self.assertEqual(task['outbox'][sent['message_id']]['status'], 'sent')
 
 

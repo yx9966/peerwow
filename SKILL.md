@@ -51,7 +51,7 @@ Contact trust sets the ceiling for collaboration with that peer; it does not rep
 
 ## 1. Discuss the task over multiple rounds
 
-Read [Communication and task protocol](references/protocol.md). Start a new thread and task ID for each new task. Use actual reply APIs within a task. Include task and message IDs so split email threads can be recovered.
+Read [Communication and task protocol](references/protocol.md). Start a new thread and task ID for each new task. Its subject must identify both owners/agents, the concrete task and task ID using the protocol's fixed format. Preserve the original subject throughout replies; keep progress and version changes in the body. Existing threads retain their original titles to avoid splitting them. Use actual reply APIs within a task. Include task and message IDs so split email threads can be recovered.
 
 The initiator describes the initial objective, available materials, proposed contribution, and known constraints. The user need not write a complete specification in advance. The recipient checks their own owner's willingness, intended outcome, and constraints. Within authorized discussion scope, agents may exchange questions and alternatives until they agree on a task statement.
 

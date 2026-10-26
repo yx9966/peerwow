@@ -4,7 +4,15 @@ Use this reference for handshakes, task discussion, and execution messages. Pref
 
 ## Message envelope
 
-Subject: `[MC-task-id] Short task title`. The initiator generates a random task ID, such as MC- followed by a UUID; recipients reuse it. Do not infer identity from the subject alone. Start a new thread for a new task. Use the connector's reply/reply_message_id capability, not just a manually added Re:. With a raw mail API, maintain In-Reply-To and References as required. Provider message/thread IDs locate records within an account; they are not shared global task IDs.
+For a new task, use this fixed subject format:
+
+`[PeerWow][MC-task-id] Owner A/Agent A <-> Owner B/Agent B | Concrete task name`
+
+Use confirmed human-readable names, a specific task title and the full task ID. Example: `[PeerWow][MC-example] Alex/Codex <-> Sam/Claude Code | Verify order-refund reconciliation`. If the peer agent is unknown at invitation time, use `Sam/agent pending`; do not guess its model or identity. If the person's name is unknown, use the intended email until clarified. The message body and envelope carry the confirmed identity after the handshake. For a known group task, list each owner/agent in a fixed order. Do not use only "hello", "test", "update" or a round number as the task title.
+
+The initiator chooses the subject once. All participants preserve its task name, ID and participant order in replies, regardless of who sends. Use the stored canonical subject or let the real reply tool inherit it; an automatically added `Re:` prefix is fine. Do not insert phase/progress/version labels or rewrite the task title on each turn. Put those details in the body. Existing threads keep their original subject even if it predates this format: renaming a live conversation can split it. Apply the format at the next new task, not by resending or renaming current mail.
+
+The initiator generates a random task ID, such as MC- followed by a UUID; recipients reuse it. Do not infer identity or authority from the subject alone. Start a new thread for a new task. Use the connector's reply/reply_message_id capability, not just a manually added Re:. With a raw mail API, maintain In-Reply-To and References as required. Provider message/thread IDs locate records within an account; they are not shared global task IDs.
 
 Bind and verify the canonical thread using the [task-loop controller](task-loop.md#canonical-email-thread). Threading is a required transport capability for task replies. If unavailable, report a blocker before sending; do not silently substitute a new thread. After a split has already occurred, recover by task/message ID without resending, retain the failure evidence, and use the verified original anchor for subsequent replies.
 
