@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+state.json
+.state/
+.lock
+*.log
+dist/
